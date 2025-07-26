@@ -109,6 +109,8 @@ class FormData {
   final bool isDeleted;
   final DateTime? deletedAt;
   final bool isQuiz;
+  final String status;
+  final int responseCount;
 
   FormData({
     this.id,
@@ -123,6 +125,8 @@ class FormData {
     this.isDeleted = false,
     this.deletedAt,
     this.isQuiz = false,
+    this.status = 'draft',
+    this.responseCount = 0,
   });
 
   Map<String, dynamic> toJson() {
@@ -139,6 +143,8 @@ class FormData {
       'isDeleted': isDeleted,
       'deletedAt': deletedAt?.toIso8601String(),
       'isQuiz': isQuiz,
+      'status': status,
+      'responseCount': responseCount,
     };
   }
 
@@ -158,10 +164,11 @@ class FormData {
       isDeleted: json['isDeleted'] ?? false,
       deletedAt: json['deletedAt'] != null ? DateTime.parse(json['deletedAt']) : null,
       isQuiz: json['isQuiz'] ?? false,
+      status: json['status'] ?? 'draft',
+      responseCount: json['responseCount'] ?? 0,
     );
   }
 
-  // Added copyWith method for Phase 1 implementation
   FormData copyWith({
     String? id,
     String? title,
@@ -175,6 +182,8 @@ class FormData {
     bool? isDeleted,
     DateTime? deletedAt,
     bool? isQuiz,
+    String? status,
+    int? responseCount,
   }) {
     return FormData(
       id: id ?? this.id,
@@ -189,24 +198,27 @@ class FormData {
       isDeleted: isDeleted ?? this.isDeleted,
       deletedAt: deletedAt ?? this.deletedAt,
       isQuiz: isQuiz ?? this.isQuiz,
+      status: status ?? this.status,
+      responseCount: responseCount ?? this.responseCount,
     );
   }
 }
 
-// Added FormModel class for Phase 1 implementation
 class FormModel {
   final String id;
   final String title;
   final String description;
   final List<Question> questions;
   final String createdBy;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
   final bool isActive;
   final String type;
   final Map<String, dynamic> settings;
   final DateTime? expiresAt;
   final String? thankYouMessage;
+  final String status;
+  final int responseCount;
 
   FormModel({
     required this.id,
@@ -214,13 +226,15 @@ class FormModel {
     required this.description,
     required this.questions,
     required this.createdBy,
-    required this.createdAt,
-    required this.updatedAt,
+    this.createdAt,
+    this.updatedAt,
     required this.isActive,
     this.type = 'form',
     this.settings = const {},
     this.expiresAt,
     this.thankYouMessage,
+    this.status = 'draft',
+    this.responseCount = 0,
   });
 
   factory FormModel.fromFormData(FormData formData) {
@@ -235,18 +249,94 @@ class FormModel {
       isActive: formData.isPublished,
       type: formData.isQuiz ? 'quiz' : 'form',
       settings: formData.settings,
+      status: formData.status,
+      responseCount: formData.responseCount,
     );
   }
 
-  // Convert from Firestore document
   factory FormModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
-    final formData = FormData.fromJson(data);
-    return FormModel.fromFormData(formData);
+    
+    if (data.containsKey('questions') && data['questions'] is List) {
+      final formData = FormData.fromJson(data);
+      return FormModel.fromFormData(formData);
+    } else {
+      return FormModel.fromMap(data, doc.id);
+    }
+  }
+
+  factory FormModel.fromMap(Map<String, dynamic> map, String id) {
+    return FormModel(
+      id: id,
+      title: map['title'] ?? '',
+      description: map['description'] ?? '',
+      questions: (map['questions'] as List<dynamic>?)
+          ?.map((q) => Question.fromMap(q))
+          .toList() ?? [],
+      createdBy: map['createdBy'] ?? '',
+      createdAt: map['createdAt']?.toDate(),
+      updatedAt: map['updatedAt']?.toDate(),
+      isActive: map['isPublished'] ?? map['isActive'] ?? false,
+      type: map['isQuiz'] == true ? 'quiz' : (map['type'] ?? 'form'),
+      settings: map['settings'] ?? {},
+      status: map['status'] ?? 'draft',
+      responseCount: map['responseCount'] ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'description': description,
+      'questions': questions.map((q) => q.toMap()).toList(),
+      'createdBy': createdBy,
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
+      'isActive': isActive,
+      'isPublished': isActive,
+      'type': type,
+      'isQuiz': type == 'quiz',
+      'settings': settings,
+      'status': status,
+      'responseCount': responseCount,
+    };
+  }
+
+  FormModel copyWith({
+    String? id,
+    String? title,
+    String? description,
+    List<Question>? questions,
+    String? createdBy,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    bool? isActive,
+    String? type,
+    Map<String, dynamic>? settings,
+    DateTime? expiresAt,
+    String? thankYouMessage,
+    String? status,
+    int? responseCount,
+  }) {
+    return FormModel(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      questions: questions ?? this.questions,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+      type: type ?? this.type,
+      settings: settings ?? this.settings,
+      expiresAt: expiresAt ?? this.expiresAt,
+      thankYouMessage: thankYouMessage ?? this.thankYouMessage,
+      status: status ?? this.status,
+      responseCount: responseCount ?? this.responseCount,
+    );
   }
 }
 
-// Added Question class for Phase 1 implementation
 class Question {
   final String id;
   final String type;
@@ -287,7 +377,36 @@ class Question {
     );
   }
 
-  // Convert to FormQuestion
+  factory Question.fromMap(Map<String, dynamic> map) {
+    return Question(
+      id: map['id'] ?? '',
+      type: map['type'] ?? 'short_answer',
+      title: map['title'] ?? '',
+      description: map['description'] ?? '',
+      required: map['required'] ?? false,
+      options: (map['options'] as List<dynamic>?)?.cast<String>() ?? [],
+      settings: map['settings'] ?? {},
+      order: map['order'] ?? 0,
+      points: map['points']?.toDouble(),
+      correctAnswer: map['correctAnswer'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'type': type,
+      'title': title,
+      'description': description,
+      'required': required,
+      'options': options,
+      'settings': settings,
+      'order': order,
+      'points': points,
+      'correctAnswer': correctAnswer,
+    };
+  }
+
   FormQuestion toFormQuestion() {
     return FormQuestion(
       id: id,
@@ -317,73 +436,155 @@ class QuestionType {
     required this.icon,
     required this.description,
   });
+
+  static const String shortAnswer = 'short_answer';
+  static const String paragraph = 'paragraph';
+  static const String multipleChoice = 'multiple_choice';
+  static const String checkboxes = 'checkboxes';
+  static const String dropdown = 'dropdown';
+  static const String email = 'email';
+  static const String number = 'number';
+  static const String date = 'date';
+  static const String time = 'time';
+  static const String rating = 'rating';
+  static const String trueFalse = 'true_false';
 }
 
 const List<QuestionType> questionTypes = [
   QuestionType(
-    type: 'short_answer',
+    type: QuestionType.shortAnswer,
     label: 'Short Answer',
     icon: Icons.short_text,
     description: 'Single line text input',
   ),
   QuestionType(
-    type: 'paragraph',
+    type: QuestionType.paragraph,
     label: 'Paragraph',
     icon: Icons.notes,
     description: 'Multi-line text input',
   ),
   QuestionType(
-    type: 'multiple_choice',
+    type: QuestionType.multipleChoice,
     label: 'Multiple Choice',
     icon: Icons.radio_button_checked,
     description: 'Single selection from options',
   ),
   QuestionType(
-    type: 'checkboxes',
+    type: QuestionType.checkboxes,
     label: 'Checkboxes',
     icon: Icons.check_box,
     description: 'Multiple selections from options',
   ),
   QuestionType(
-    type: 'dropdown',
+    type: QuestionType.dropdown,
     label: 'Dropdown',
     icon: Icons.arrow_drop_down_circle,
     description: 'Dropdown selection',
   ),
   QuestionType(
-    type: 'email',
+    type: QuestionType.email,
     label: 'Email',
     icon: Icons.email,
     description: 'Email address input',
   ),
   QuestionType(
-    type: 'number',
+    type: QuestionType.number,
     label: 'Number',
     icon: Icons.numbers,
     description: 'Numeric input',
   ),
   QuestionType(
-    type: 'date',
+    type: QuestionType.date,
     label: 'Date',
     icon: Icons.calendar_today,
     description: 'Date picker',
   ),
   QuestionType(
-    type: 'time',
+    type: QuestionType.time,
     label: 'Time',
     icon: Icons.access_time,
     description: 'Time picker',
   ),
   QuestionType(
-    type: 'rating',
+    type: QuestionType.rating,
     label: 'Rating Scale',
     icon: Icons.star,
     description: 'Star or numeric rating',
   ),
   QuestionType(
-    type: 'true_false',
+    type: QuestionType.trueFalse,
     label: 'True/False',
     icon: Icons.check_circle_outline,
     description: 'True or false question',
   ),
 ];
+
+enum QuestionModel {
+  shortAnswer,
+  paragraph,
+  multipleChoice,
+  checkboxes,
+  dropdown,
+  email,
+  number,
+  date,
+  time,
+  rating,
+  trueFalse;
+
+  String get value {
+    switch (this) {
+      case QuestionModel.shortAnswer:
+        return 'short_answer';
+      case QuestionModel.paragraph:
+        return 'paragraph';
+      case QuestionModel.multipleChoice:
+        return 'multiple_choice';
+      case QuestionModel.checkboxes:
+        return 'checkboxes';
+      case QuestionModel.dropdown:
+        return 'dropdown';
+      case QuestionModel.email:
+        return 'email';
+      case QuestionModel.number:
+        return 'number';
+      case QuestionModel.date:
+        return 'date';
+      case QuestionModel.time:
+        return 'time';
+      case QuestionModel.rating:
+        return 'rating';
+      case QuestionModel.trueFalse:
+        return 'true_false';
+    }
+  }
+
+  static QuestionModel fromString(String value) {
+    switch (value) {
+      case 'short_answer':
+        return QuestionModel.shortAnswer;
+      case 'paragraph':
+        return QuestionModel.paragraph;
+      case 'multiple_choice':
+        return QuestionModel.multipleChoice;
+      case 'checkboxes':
+        return QuestionModel.checkboxes;
+      case 'dropdown':
+        return QuestionModel.dropdown;
+      case 'email':
+        return QuestionModel.email;
+      case 'number':
+        return QuestionModel.number;
+      case 'date':
+        return QuestionModel.date;
+      case 'time':
+        return QuestionModel.time;
+      case 'rating':
+        return QuestionModel.rating;
+      case 'true_false':
+        return QuestionModel.trueFalse;
+      default:
+        return QuestionModel.shortAnswer;
+    }
+  }
+}
