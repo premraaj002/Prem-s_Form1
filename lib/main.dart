@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'screens/auth_wrapper.dart';
+import 'auth_wrapper.dart';
 import 'screens/public_form_screen.dart';
 import 'firebase_options.dart';
 
