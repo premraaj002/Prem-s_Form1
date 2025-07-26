@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Add this import for Clipboard
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/form_models.dart';
 import '../widgets/question_widgets.dart';
 import '../screens/form_preview_screen.dart';
-import '../screens/public_form_screen.dart'; // Add this import
+import '../screens/public_form_screen.dart';
 import 'dart:math';
 import '../screens/responses_screen.dart';
-
 
 class FormBuilderScreen extends StatefulWidget {
   final String? formId; // null for new form, id for editing
@@ -57,6 +57,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         isPublished: false,
+        status: 'draft', // Add status field
+        responseCount: 0, // Add response count field
       );
     }
   }
@@ -237,6 +239,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
         createdAt: widget.formId == null ? now : _currentForm?.createdAt ?? now,
         updatedAt: now,
         isPublished: publish,
+        status: publish ? 'published' : 'draft', // Set status based on publish state
+        responseCount: _currentForm?.responseCount ?? 0, // Preserve existing response count
       );
 
       if (widget.formId == null) {
@@ -316,6 +320,7 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
     );
   }
 
+  // Updated _shareForm method with enhanced functionality
   void _shareForm() {
     if (_currentForm?.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -324,16 +329,19 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
       return;
     }
 
-    // For local testing - replace with your actual domain in production
-    final formUrl = 'http://localhost:3000/form/${_currentForm!.id}';
-    // For production: 'https://yourdomain.com/form/${_currentForm!.id}'
+    // For web deployment - replace with your actual domain
+   final formUrl = 'https://prem-s-form1-e87biijoj-premraaj002s-projects.vercel.app/form/${_currentForm!.id}';
+
+    
+    // For mobile app with deep linking
+    // final formUrl = 'https://premsform.app/form/${_currentForm!.id}';
     
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Row(
+        title: const Row(
           children: [
-            Icon(Icons.share, color: Color(0xFF1A73E8)),
+            Icon(Icons.share, color: Colors.purple),
             SizedBox(width: 8),
             Text('Share Form'),
           ],
@@ -342,32 +350,102 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Share this link with respondents:'),
-            const SizedBox(height: 12),
+            const Text(
+              'Share this link with others to collect responses:',
+              style: TextStyle(fontSize: 16),
+            ),
+            const SizedBox(height: 16),
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey[100],
                 border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: SelectableText(
                 formUrl,
-                style: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
+                style: const TextStyle(fontSize: 14, fontFamily: 'monospace'),
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              'Note: Form must be published to be accessible via this link.',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.orange.shade700,
-                fontStyle: FontStyle.italic,
+            const SizedBox(height: 16),
+            // Warning message if form is not published
+            if (_currentForm?.status != 'published')
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange[50],
+                  border: Border.all(color: Colors.orange.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning, color: Colors.orange[700], size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Form must be published to be accessible via this link.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.orange[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: formUrl));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.check, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text('Link copied to clipboard!'),
+                            ],
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copy Link'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context); // Close dialog first
+                      // Open form in preview mode
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PublicFormScreen(
+                            formId: _currentForm!.id!,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.preview),
+                    label: const Text('Preview'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -375,40 +453,8 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              // Copy to clipboard functionality can be added here
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Link copied to clipboard!'),
-                  backgroundColor: Colors.green,
-                ),
-              );
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copy Link'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF1A73E8),
-              foregroundColor: Colors.white,
-            ),
-          ),
-          // Add Test Public View button for easy testing
-          TextButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PublicFormScreen(formId: _currentForm!.id!),
-                ),
-              );
-            },
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Test Public View'),
             style: TextButton.styleFrom(
-              foregroundColor: Colors.green[700],
+              foregroundColor: Colors.purple,
             ),
           ),
         ],
@@ -442,82 +488,82 @@ class _FormBuilderScreenState extends State<FormBuilderScreen> {
 
     return Scaffold(
       backgroundColor: Color(0xFFF8F9FA),
-    appBar: AppBar(
-  title: Text(
-    widget.formId == null ? 'Create Form' : 'Edit Form',
-    style: TextStyle(fontWeight: FontWeight.w600),
-  ),
-  backgroundColor: Colors.white,
-  foregroundColor: Color(0xFF1A73E8),
-  elevation: 1,
-  actions: [
-    // Preview
-    TextButton.icon(
-      onPressed: _previewForm,
-      icon: Icon(Icons.visibility, size: 16),
-      label: Text('Preview'),
-      style: TextButton.styleFrom(foregroundColor: Color(0xFF1A73E8)),
-    ),
+      appBar: AppBar(
+        title: Text(
+          widget.formId == null ? 'Create Form' : 'Edit Form',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Color(0xFF1A73E8),
+        elevation: 1,
+        actions: [
+          // Preview
+          TextButton.icon(
+            onPressed: _previewForm,
+            icon: Icon(Icons.visibility, size: 16),
+            label: Text('Preview'),
+            style: TextButton.styleFrom(foregroundColor: Color(0xFF1A73E8)),
+          ),
 
-    // Share
-    if (_currentForm?.id != null)
-      TextButton.icon(
-        onPressed: _shareForm,
-        icon: Icon(Icons.share, size: 16),
-        label: Text('Share'),
-        style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
-      ),
+          // Share
+          if (_currentForm?.id != null)
+            TextButton.icon(
+              onPressed: _shareForm,
+              icon: Icon(Icons.share, size: 16),
+              label: Text('Share'),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+            ),
 
-    // ← NEW! Responses
-    if (_currentForm?.id != null && _currentForm!.isPublished)
-      TextButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ResponsesScreen(
-                formId: _currentForm!.id!,
-                formTitle: _currentForm!.title,
+          // Responses
+          if (_currentForm?.id != null && _currentForm!.status == 'published')
+            TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ResponsesScreen(
+                      formId: _currentForm!.id!,
+                      formTitle: _currentForm!.title,
+                    ),
+                  ),
+                );
+              },
+              icon: Icon(Icons.analytics, size: 16),
+              label: Text('Responses'),
+              style: TextButton.styleFrom(foregroundColor: Colors.green[700]),
+            ),
+
+          // Save
+          TextButton.icon(
+            onPressed: _isSaving ? null : () => _saveForm(),
+            icon: Icon(Icons.save, size: 16),
+            label: Text('Save'),
+            style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
+          ),
+
+          // Publish
+          Padding(
+            padding: EdgeInsets.only(right: 16),
+            child: ElevatedButton.icon(
+              onPressed: _isSaving ? null : () => _saveForm(publish: true),
+              icon: _isSaving
+                  ? SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Icon(Icons.publish, size: 16),
+              label: Text(_isSaving ? 'Publishing...' : 'Publish'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF1A73E8),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
-          );
-        },
-        icon: Icon(Icons.analytics, size: 16),
-        label: Text('Responses'),
-        style: TextButton.styleFrom(foregroundColor: Colors.green[700]),
+          ),
+        ],
       ),
-
-    // Save
-    TextButton.icon(
-      onPressed: _isSaving ? null : () => _saveForm(),
-      icon: Icon(Icons.save, size: 16),
-      label: Text('Save'),
-      style: TextButton.styleFrom(foregroundColor: Colors.grey[700]),
-    ),
-
-    // Publish
-    Padding(
-      padding: EdgeInsets.only(right: 16),
-      child: ElevatedButton.icon(
-        onPressed: _isSaving ? null : () => _saveForm(publish: true),
-        icon: _isSaving
-            ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
-            : Icon(Icons.publish, size: 16),
-        label: Text(_isSaving ? 'Publishing...' : 'Publish'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Color(0xFF1A73E8),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-      ),
-    ),
-  ],
-),
 
       body: Row(
         children: [
